@@ -34,6 +34,7 @@ import type { ReviewerRequest } from "./reviewerRequest";
 
 const typedAnswerRegex = /\[\[type:(.+?:)?(.+?)\]\]/m;
 const TOOLTIP_TIMEOUT_MS = 2000;
+const PROCESSING_INDICATOR_DELAY_MS = 200;
 
 export class ReviewerState {
     answerHtml = "";
@@ -49,6 +50,7 @@ export class ReviewerState {
     tooltipMessageTimeout: ReturnType<typeof setTimeout> | undefined;
     readonly tooltipMessage = writable("");
     readonly tooltipShown = writable(false);
+    readonly processing = writable(false);
     readonly flag = writable(0);
     readonly marked = writable(false);
     readonly autoAdvance = writable(false);
@@ -60,6 +62,9 @@ export class ReviewerState {
     mutateNextStates!: StateMutatorFn;
 
     iframe: HTMLIFrameElement | undefined = undefined;
+    cardRequestInFlight = false;
+    private processingTimeout: ReturnType<typeof setTimeout> | undefined;
+    private requestCounter = 0;
 
     constructor() {
         this.autoAdvance.subscribe($autoAdvance => {
@@ -134,6 +139,28 @@ export class ReviewerState {
 
     public refresh() {
         this.showQuestion(null);
+    }
+
+    private startCardRequest(requestId: number) {
+        this.cardRequestInFlight = true;
+        this.processing.set(false);
+        clearTimeout(this.processingTimeout);
+        this.processingTimeout = setTimeout(() => {
+            if (this.requestCounter === requestId) {
+                this.processing.set(true);
+            }
+        }, PROCESSING_INDICATOR_DELAY_MS);
+    }
+
+    private finishCardRequest(requestId: number) {
+        if (this.requestCounter !== requestId) {
+            return;
+        }
+
+        this.cardRequestInFlight = false;
+        this.processing.set(false);
+        clearTimeout(this.processingTimeout);
+        this.processingTimeout = undefined;
     }
 
     reviewerAction(menu: ReviewerActionRequest_ReviewerAction) {
@@ -279,6 +306,10 @@ export class ReviewerState {
     }
 
     async handleKeyPress(key: string, ctrl: boolean, _shift: boolean) {
+        if (this.cardRequestInFlight) {
+            return;
+        }
+
         key = key.toLowerCase();
         switch (key) {
             case "1": {
@@ -428,10 +459,12 @@ export class ReviewerState {
     }
 
     async showQuestion(answer: CardAnswer | null) {
+        const requestId = ++this.requestCounter;
+        this.startCardRequest(requestId);
         this._answerShown = false;
         const resp = await nextCardData({
             answer: answer || undefined,
-        });
+        }).finally(() => this.finishCardRequest(requestId));
 
         if (!resp.nextCard) {
             this.displayOverview();
@@ -481,6 +514,9 @@ export class ReviewerState {
     }
 
     public async showAnswer() {
+        if (this.cardRequestInFlight) {
+            return;
+        }
         this.answerShown.set(true);
         this._answerShown = true;
         this.waitingForAutoAdvanceAudio = this.shouldWaitForAudio(this._cardData!.answerAvTags);
@@ -492,7 +528,7 @@ export class ReviewerState {
     }
 
     public async easeButtonPressed(rating: number) {
-        if (!this._answerShown) {
+        if (!this._answerShown || this.cardRequestInFlight) {
             return;
         }
 

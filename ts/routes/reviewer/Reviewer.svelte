@@ -3,6 +3,7 @@ Copyright: Ankitects Pty Ltd and contributors
 License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 -->
 <script lang="ts">
+    import * as tr from "@generated/ftl";
     import type { ReviewerState } from "./reviewer";
 
     let iframe: HTMLIFrameElement;
@@ -15,6 +16,7 @@ License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
     }
     $: tooltipMessage = state.tooltipMessage;
     $: tooltipShown = state.tooltipShown;
+    $: processing = state.processing;
     $: flag = state.flag;
     $: marked = state.marked;
 </script>
@@ -31,6 +33,12 @@ License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
     <div class="tooltip" style:opacity={$tooltipShown ? 1 : 0}>
         {$tooltipMessage}
     </div>
+
+    {#if $processing}
+        <div class="processing">
+            {tr.qtMiscProcessing()}
+        </div>
+    {/if}
 </div>
 
 {#if $flag}
@@ -57,6 +65,19 @@ License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
         border: 2px solid var(--highlight-fg);
         opacity: 1;
         transition: opacity 0.3s;
+    }
+
+    div.processing {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: color-mix(in srgb, var(--canvas) 72%, transparent);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        z-index: calc(var(--bs-tooltip-z-index) + 1);
+        pointer-events: none;
     }
 
     iframe {
