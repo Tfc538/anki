@@ -25,6 +25,7 @@ import {
     reviewerAction,
     setConfigJson,
     setFlag,
+    stateIsLeech,
 } from "@generated/backend";
 import * as tr from "@generated/ftl";
 import { get, writable } from "svelte/store";
@@ -540,6 +541,11 @@ export class ReviewerState {
             states.good!,
             states.easy!,
         ][rating]!;
+
+        const isLeech = await stateIsLeech(newState);
+        if (isLeech.val) {
+            this.showTooltip(tr.studyingCardWasALeech());
+        }
 
         this.showQuestion(
             new CardAnswer({
