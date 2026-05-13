@@ -54,6 +54,8 @@ export class ReviewerState {
     readonly autoAdvance = writable(false);
     autoAdvanceQuestionTimeout: ReturnType<typeof setTimeout> | undefined;
     autoAdvanceAnswerTimeout: ReturnType<typeof setTimeout> | undefined;
+    pendingAutoAdvanceAction: (() => void) | undefined;
+    waitingForAutoAdvanceAudio = false;
     _answerShown = false;
     mutateNextStates!: StateMutatorFn;
 
@@ -347,7 +349,10 @@ export class ReviewerState {
                 },
             })[this._cardData!.autoAdvanceQuestionAction];
 
-            this.autoAdvanceQuestionTimeout = setTimeout(action, this._cardData!.autoAdvanceQuestionSeconds * 1000);
+            this.autoAdvanceQuestionTimeout = setTimeout(
+                () => this.runAutoAdvanceAction(action),
+                this._cardData!.autoAdvanceQuestionSeconds * 1000,
+            );
         }
     }
 
@@ -372,7 +377,38 @@ export class ReviewerState {
                 },
             })[this._cardData.autoAdvanceAnswerAction];
 
-            this.autoAdvanceAnswerTimeout = setTimeout(action, this._cardData.autoAdvanceAnswerSeconds * 1000);
+            this.autoAdvanceAnswerTimeout = setTimeout(
+                () => this.runAutoAdvanceAction(action),
+                this._cardData.autoAdvanceAnswerSeconds * 1000,
+            );
+        }
+    }
+
+    private shouldWaitForAudio(tags: AVTag[]) {
+        return Boolean(
+            this._cardData?.autoAdvanceWaitForAudio
+                && this._cardData?.autoplay
+                && tags.length,
+        );
+    }
+
+    private runAutoAdvanceAction(action: () => void) {
+        if (this.waitingForAutoAdvanceAudio) {
+            this.pendingAutoAdvanceAction = action;
+            return;
+        }
+
+        this.pendingAutoAdvanceAction = undefined;
+        action();
+    }
+
+    public onAudioFinished() {
+        this.waitingForAutoAdvanceAudio = false;
+
+        if (this.pendingAutoAdvanceAction) {
+            const action = this.pendingAutoAdvanceAction;
+            this.pendingAutoAdvanceAction = undefined;
+            action();
         }
     }
 
@@ -415,6 +451,8 @@ export class ReviewerState {
         const question = resp.nextCard?.front || "";
         this.updateHtml(question, resp?.nextCard?.css, resp?.nextCard?.bodyClass, resp?.preload);
         this.iframe!.style.visibility = "visible";
+        this.waitingForAutoAdvanceAudio = this.shouldWaitForAudio(this._cardData.questionAvTags);
+        this.pendingAutoAdvanceAction = undefined;
         this.maybeAutoPlayAudio(this._cardData.questionAvTags);
         this.beginAnsweringMs = Date.now();
         this.answerMs = undefined;
@@ -445,6 +483,8 @@ export class ReviewerState {
     public async showAnswer() {
         this.answerShown.set(true);
         this._answerShown = true;
+        this.waitingForAutoAdvanceAudio = this.shouldWaitForAudio(this._cardData!.answerAvTags);
+        this.pendingAutoAdvanceAction = undefined;
         this.maybeAutoPlayAudio(this._cardData!.answerAvTags);
         this.answerMs = Date.now();
         this.updateHtml(await this.showTypedAnswer(this._cardData?.back || ""));

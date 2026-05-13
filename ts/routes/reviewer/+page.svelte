@@ -18,6 +18,7 @@ License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
     onMount(() => {
         globalThis.anki ??= {};
         globalThis.anki.changeReceived = () => state.showQuestion(null);
+        globalThis.anki.audioFinished = () => state.onAudioFinished();
         _blockDefaultDragDropBehavior();
     });
 </script>

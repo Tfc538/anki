@@ -1238,6 +1238,10 @@ timerStopped = false;
 
 
 class SvelteReviewer(Reviewer):
+    def _on_av_player_did_end_playing(self, *args) -> None:
+        if av_player.queue_is_empty():
+            self.web.eval("globalThis.anki?.audioFinished?.();")
+
     def refresh_if_needed(self):
         if self._refresh_needed:
             self.mw.fade_in_webview()
